@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-export type State = {
+export type InvoiceState = {
   errors?: {
     customerId?: string[];
     amount?: string[];
@@ -17,7 +17,16 @@ export type State = {
   message?: string | null;
 };
 
-const FormSchema = z.object({
+export type CustomerState = {
+  errors?: {
+    name?: string[];
+    email?: string[];
+    // image_url?: string[];
+  };
+  message?: string | null;
+};
+
+const InvoiceFormSchema = z.object({
   id: z.string(),
   customerId: z.string({
     invalid_type_error: "Please select a customer",
@@ -31,9 +40,27 @@ const FormSchema = z.object({
   date: z.string(),
 });
 
-const CreateInvoice = FormSchema.omit({ id: true, date: true });
+const CustomerFormSchema = z.object({
+  id: z.string(),
+  name: z.string().min(0, {
+    message: "test",
+  }),
+  email: z
+    .string({
+      message: "Required field",
+    })
+    .email({
+      message: "A valid email is required",
+    }),
+});
 
-export async function createInvoice(prevState: State, formData: FormData) {
+const CreateInvoice = InvoiceFormSchema.omit({ id: true, date: true });
+const CreateCustomer = CustomerFormSchema.omit({ id: true });
+
+export async function createInvoice(
+  prevState: InvoiceState,
+  formData: FormData
+) {
   const validatedFields = CreateInvoice.safeParse({
     customerId: formData.get("customerId"),
     amount: formData.get("amount"),
@@ -66,11 +93,11 @@ export async function createInvoice(prevState: State, formData: FormData) {
   redirect("/dashboard/invoices");
 }
 
-const UpdateInvoice = FormSchema.omit({ id: true, date: true });
+const UpdateInvoice = InvoiceFormSchema.omit({ id: true, date: true });
 
 export async function updateInvoice(
   id: string,
-  prevState: State,
+  prevState: InvoiceState,
   formData: FormData
 ) {
   const validatedFields = UpdateInvoice.safeParse({
@@ -136,4 +163,38 @@ export async function authenticate(
     }
     throw error;
   }
+}
+
+// const CreateCustomer =
+
+export async function createCustomer(
+  prevState: CustomerState,
+  formData: FormData
+) {
+  const validatedFields = CreateCustomer.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+  });
+
+  console.log(validatedFields.data);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+      message: "Failed to create customer",
+    };
+  }
+
+  const { name, email } = validatedFields.data;
+
+  try {
+    await sql`INSERT INTO customers (name, email, image_url) VALUES (${name},${email}, 'https://static.vecteezy.com/system/resources/thumbnails/003/337/584/small/default-avatar-photo-placeholder-profile-icon-vector.jpg')`;
+  } catch (error) {
+    return {
+      message: "Database Error: Failed to create invoice",
+    };
+  }
+
+  revalidatePath("/dashboard/customers");
+  redirect("/dashboard/customers");
 }
